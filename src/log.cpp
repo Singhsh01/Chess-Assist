@@ -1,6 +1,7 @@
 #include "log.hpp"
 
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <iostream>
@@ -23,10 +24,9 @@ void log(std::string_view tag, std::string_view message,
   char stamp[32]{};
   std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
 
-  std::cerr << std::format(
-                   "[{}.{:03}] [{}] {} ({}:{})", stamp,
-                   static_cast<int>(ms.count()), tag, message,
-                   std::filesystem::path{source.file_name()}.filename().string(),
-                   source.line())
-            << '\n';
+  char millis[8]{};
+  std::snprintf(millis, sizeof(millis), "%03d", static_cast<int>(ms.count()));
+  std::cerr << '[' << stamp << '.' << millis << "] [" << tag << "] " << message << " ("
+            << std::filesystem::path{source.file_name()}.filename().string() << ':'
+            << source.line() << ")\n";
 }

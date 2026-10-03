@@ -10,7 +10,7 @@ jobs:
     name: Linux - build, unit tests, Playwright
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
@@ -25,7 +25,7 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build --output-on-failure
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -56,9 +56,9 @@ jobs:
 
   macos:
     name: macOS - build and unit tests
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install dependencies
         run: brew install glfw glm stockfish
       - name: Configure & build
@@ -70,8 +70,9 @@ jobs:
       - name: Headless smoke test
         run: |
           ./bin/chess-assist --headless --port 8765 &
-          sleep 3
+          APP=$!
+          for i in $(seq 1 30); do curl -sf localhost:8765/api/health && break; sleep 1; done
           curl -sf -X POST localhost:8765/api/side -d '{"side":"black"}'
           curl -sf -X POST localhost:8765/api/move -d '{"san":"d4"}'
           curl -sf localhost:8765/api/state | grep -q '"historyText":"1. d4"'
-          kill %1
+          kill $APP
