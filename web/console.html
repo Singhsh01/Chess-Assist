@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess Assist Console</title>
+<style>
+  :root {
+    --bg: #0b0c0f;
+    --panel: #121318;
+    --panel-2: #181a20;
+    --line: rgba(255, 255, 255, 0.07);
+    --text: #ece8e3;
+    --muted: #8b8f97;
+    --mint: #46e0a0;
+    --amber: #f4c14e;
+    --coral: #ff6b6b;
+    --sq-light: #d9d4cc;
+    --sq-dark: #4a4b50;
+    --radius: 14px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  body { padding: 24px; min-height: 100vh; }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  h1 span { color: var(--mint); }
+  .sub { color: var(--muted); }
+  .pill { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 99px;
+    border: 1px solid var(--line); color: var(--muted); display: inline-flex; gap: 8px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
+  .pill.online .dot { background: var(--mint); }
+  .caps { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .stack { display: grid; gap: 20px; align-content: start; }
+
+  /* Side selection */
+  #side-selection { display: grid; gap: 14px; }
+  #side-selection[hidden] { display: none; }
+  .side-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+  .side-btn { flex: 1 1 140px; padding: 18px; border-radius: 12px; border: 1px solid var(--line);
+    font: inherit; font-weight: 600; cursor: pointer; transition: border-color .15s, transform .15s; }
+  .side-btn:hover { border-color: var(--mint); transform: translateY(-1px); }
+  .side-btn.white { background: #ece8e1; color: #15161a; }
+  .side-btn.black { background: #17181c; color: var(--text); }
+  .side-btn .glyph { font-size: 28px; display: block; line-height: 1.1; }
+  .side-summary { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .side-summary button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+
+  /* Board */
+  .board-wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  #board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: min(100%, 440px);
+    aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .sq { position: relative; display: grid; place-items: center; font-size: clamp(22px, 4.2vw, 40px); user-select: none; }
+  .sq.light { background: var(--sq-light); }
+  .sq.dark { background: var(--sq-dark); }
+  .sq.last::after { content: ""; position: absolute; inset: 0; background: rgba(244, 193, 78, 0.28); }
+  .sq.best::before { content: ""; position: absolute; inset: 3px; border: 3px solid var(--amber); border-radius: 4px; z-index: 1; }
+  .sq.best.opp::before { border-color: #8fb2ff; }
+  .pc { position: relative; z-index: 2; line-height: 1; }
+  .pc.w { color: #fbfaf7; text-shadow: 0 0 2px #000, 0 1px 2px rgba(0,0,0,.6); }
+  .pc.b { color: #141417; text-shadow: 0 0 1px rgba(255,255,255,.35); }
+  .coord { position: absolute; left: 3px; bottom: 1px; font-size: 10px; color: rgba(0,0,0,.45); }
+  .sq.dark .coord { color: rgba(255,255,255,.45); }
+  .view-meta { display: grid; gap: 6px; min-width: 180px; }
+  .metric { font-family: var(--mono); font-size: 14px; }
+  #render-view { width: 100%; border-radius: 10px; border: 1px solid var(--line); display: block; margin-top: 16px; }
+  #render-view[hidden] { display: none; }
+
+  /* Assistant */
+  #assistant-overlay .big { font-size: 46px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; }
+  #assistant-overlay .row { display: flex; align-items: baseline; gap: 12px; }
+  .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.07); position: relative; overflow: hidden; margin: 10px 0 16px; }
+  .bar > i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(70,224,160,.55), var(--mint)); transition: width .4s ease; }
+  .bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.35); }
+  .card { border: 1px solid rgba(244,193,78,.45); background: rgba(244,193,78,.07); border-radius: 12px; padding: 14px 16px; }
+  .card.opp { border-color: rgba(143,178,255,.4); background: rgba(143,178,255,.06); }
+  #best-move { font-size: 38px; font-weight: 600; color: var(--amber); font-family: var(--mono); }
+  .card.opp #best-move { color: var(--text); }
+  #pv { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-top: 12px; word-spacing: 2px; }
+  #engine-status { color: var(--muted); font-size: 13px; margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+
+  /* Terminal */
+  form { display: flex; gap: 10px; align-items: center; }
+  form .prompt { color: var(--mint); font-family: var(--mono); font-size: 18px; }
+  #move-input { flex: 1; background: rgba(255,255,255,.045); color: var(--text); border: 1px solid transparent;
+    border-radius: 9px; padding: 10px 12px; font: 16px var(--mono); outline: none; }
+  #move-input:focus { border-color: rgba(70,224,160,.5); }
+  form button { background: var(--mint); color: #08110d; border: 0; border-radius: 9px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  #terminal-feedback { min-height: 22px; font-family: var(--mono); font-size: 13px; margin-top: 10px; color: var(--muted); }
+  #terminal-feedback[data-ok="false"] { color: var(--coral); }
+  #move-history { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 14px;
+    display: grid; grid-template-columns: 40px 1fr 1fr; row-gap: 4px; max-height: 260px; overflow: auto; }
+  #move-history li { display: contents; }
+  #move-history .n { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chess Assist<span>.</span></h1>
+  <span class="sub">Automation console - mirrors the 3D app's state</span>
+  <span class="pill" id="conn" data-testid="connection"><span class="dot"></span><span id="conn-text">connecting</span></span>
+</header>
+
+<div class="grid">
+  <div class="stack">
+    <section class="panel" data-testid="side-panel">
+      <p class="caps">Side</p>
+      <div id="side-selection" data-testid="side-selection" hidden>
+        <div>Choose your side. The 3D camera turns so your pieces are at the bottom.</div>
+        <div class="side-buttons">
+          <button class="side-btn white" data-testid="side-white" data-side="white"><span class="glyph">&#9812;</span>Play White</button>
+          <button class="side-btn black" data-testid="side-black" data-side="black"><span class="glyph">&#9818;</span>Play Black</button>
+        </div>
+      </div>
+      <div class="side-summary" id="side-summary" hidden>
+        <span>You play <strong id="side-label" data-testid="side-label">-</strong></span>
+        <button data-side="white" data-testid="switch-white">White</button>
+        <button data-side="black" data-testid="switch-black">Black</button>
+        <button id="new-game" data-testid="new-game">New game</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <p class="caps">Board</p>
+      <div class="board-wrap">
+        <div id="board" data-testid="board-2d" data-orientation="white"></div>
+        <div class="view-meta">
+          <div class="sub">Status</div>
+          <div class="metric" id="status" data-testid="game-status">-</div>
+          <div class="sub">Camera yaw</div>
+          <div class="metric"><span id="camera-yaw" data-testid="camera-yaw" data-yaw="0">0.0</span>&deg;
+            <span class="sub">(target <span id="camera-target" data-testid="camera-target-yaw">0</span>&deg;)</span></div>
+          <div class="sub">Turn</div>
+          <div class="metric" id="turn" data-testid="turn">white</div>
+          <div class="sub">Mode</div>
+          <div class="metric" id="mode" data-testid="app-mode">-</div>
+        </div>
+      </div>
+      <img id="render-view" data-testid="render-view" alt="Live 3D render" hidden>
+    </section>
+
+    <section class="panel">
+      <p class="caps">Move terminal</p>
+      <form id="move-form" data-testid="move-form" autocomplete="off">
+        <span class="prompt">&gt;</span>
+        <input id="move-input" data-testid="move-input" placeholder="d4, Nf3, exd5, O-O or undo / reset" spellcheck="false">
+        <button type="submit" data-testid="move-submit">Play</button>
+      </form>
+      <div id="terminal-feedback" data-testid="terminal-feedback"></div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel" id="assistant-overlay" data-testid="assistant-overlay"
+             data-position-id="0" data-analysed-position-id="0" data-complete="false">
+      <p class="caps" style="color: var(--mint)">Winning assistant</p>
+      <div class="sub" id="win-label">Win chance</div>
+      <div class="row">
+        <div class="big" id="win-probability" data-testid="win-probability">--</div>
+        <div class="metric" id="eval-text" data-testid="eval-text">--</div>
+      </div>
+      <div class="bar"><i id="win-bar" style="width: 50%"></i></div>
+      <div class="card" id="best-card">
+        <p class="caps" id="best-label" style="color: var(--amber)">Best move for you</p>
+        <div id="best-move" data-testid="best-move">...</div>
+        <div class="sub" id="headline" data-testid="assistant-headline"></div>
+      </div>
+      <div id="pv" data-testid="principal-variation"></div>
+      <div id="engine-status"><span class="dot" id="engine-dot"></span><span id="engine-text" data-testid="engine-status">-</span>
+        <span class="sub">depth <span id="engine-depth" data-testid="engine-depth">0</span></span></div>
+    </section>
+
+    <section class="panel">
+      <p class="caps">Moves</p>
+      <ol id="move-history" data-testid="move-history"></ol>
+      <div class="empty" id="history-empty">No moves yet.</div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const GLYPH = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟" };
+let lastState = null;
+let renderTimer = 0;
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  try { return { status: res.status, data: JSON.parse(text) }; }
+  catch { return { status: res.status, data: { message: text } }; }
+}
+
+function sqName(i) { return "abcdefgh"[i % 8] + (Math.floor(i / 8) + 1); }
+
+function renderBoard(s) {
+  const board = $("board");
+  const black = s.side === "black";
+  board.dataset.orientation = black ? "black" : "white";
+  const best = s.assistant.bestMoveLan || "";
+  const bestFrom = best.slice(0, 2), bestTo = best.slice(2, 4);
+  const last = s.lastMove || {};
+  let html = "";
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      // White at the bottom: rank 8 first. Black at the bottom: rank 1 first, files reversed.
+      const rank = black ? r : 7 - r;
+      const file = black ? 7 - c : c;
+      const idx = rank * 8 + file;
+      const name = sqName(idx);
+      const ch = s.board[idx];
+      const light = (rank + file) % 2 === 1;
+      const cls = ["sq", light ? "light" : "dark"];
+      if (name === last.from || name === last.to) cls.push("last");
+      if (s.sideSelected && (name === bestFrom || name === bestTo)) {
+        cls.push("best");
+        if (!s.assistant.bestForUser) cls.push("opp");
+      }
+      const piece = ch === "." ? "" :
+        `<span class="pc ${ch === ch.toUpperCase() ? "w" : "b"}">${GLYPH[ch.toUpperCase()]}</span>`;
+      const coord = c === 0 ? `<span class="coord">${name[1]}</span>` : "";
+      html += `<div class="${cls.join(" ")}" data-square="${name}" data-piece="${ch === "." ? "" : ch}">${piece}${coord}</div>`;
+    }
+  }
+  board.innerHTML = html;
+}
+
+function render(s) {
+  lastState = s;
+  $("conn").classList.add("online");
+  $("conn-text").textContent = s.app.headless ? "online - headless" : "online - windowed";
+  $("mode").textContent = s.app.headless ? "headless" : "windowed";
+
+  $("side-selection").hidden = s.sideSelected;
+  $("side-summary").hidden = !s.sideSelected;
+  $("side-label").textContent = s.side ? s.side[0].toUpperCase() + s.side.slice(1) : "-";
+
+  const yaw = s.camera.yaw;
+  $("camera-yaw").textContent = yaw.toFixed(1);
+  $("camera-yaw").dataset.yaw = yaw.toFixed(2);
+  $("camera-target").textContent = s.camera.targetYaw.toFixed(0);
+  $("status").textContent = s.status;
+  $("turn").textContent = s.turn;
+  renderBoard(s);
+
+  const a = s.assistant;
+  const overlay = $("assistant-overlay");
+  overlay.dataset.positionId = String(a.positionId);
+  overlay.dataset.analysedPositionId = String(a.analysedPositionId);
+  overlay.dataset.complete = String(a.complete);
+  overlay.dataset.bestForUser = String(a.bestForUser);
+  $("win-label").textContent = s.side ? `Your win chance (${s.side})` : "Win chance";
+  if (a.hasEval) {
+    const pct = a.userWinProbability * 100;
+    $("win-probability").textContent = pct.toFixed(1) + "%";
+    $("win-probability").style.color = pct >= 55 ? "var(--mint)" : pct <= 45 ? "var(--coral)" : "var(--text)";
+    $("win-bar").style.width = pct.toFixed(1) + "%";
+    $("eval-text").textContent = a.evalText;
+  }
+  $("best-move").textContent = a.bestMoveSan || "...";
+  $("best-card").classList.toggle("opp", !a.bestForUser);
+  $("best-label").textContent = a.bestForUser ? "Best move for you" : "Opponent's best reply";
+  $("best-label").style.color = a.bestForUser ? "var(--amber)" : "#8fb2ff";
+  $("headline").textContent = a.headline;
+  $("pv").textContent = a.pv.length > 1 ? "Line: " + a.pv.join(" ") : "";
+  $("engine-text").textContent = a.status;
+  $("engine-depth").textContent = a.depth;
+  $("engine-dot").style.background = !a.engineOk ? "var(--coral)" : a.searching ? "var(--amber)" : "var(--mint)";
+
+  const hist = $("move-history");
+  hist.innerHTML = s.turns.map((t) =>
+    `<li data-testid="history-row" data-turn="${t.n}"><span class="n">${t.n}.</span><span>${t.white || "..."}</span><span>${t.black}</span></li>`).join("");
+  hist.dataset.text = s.historyText;
+  $("history-empty").hidden = s.turns.length > 0;
+
+  const img = $("render-view");
+  if (!s.app.headless && Date.now() - renderTimer > 2000) {
+    renderTimer = Date.now();
+    img.hidden = false;
+    img.src = "/api/screenshot.png?t=" + renderTimer;
+  }
+}
+
+async function poll() {
+  try {
+    const { data } = await api("/api/state");
+    render(data);
+  } catch {
+    $("conn").classList.remove("online");
+    $("conn-text").textContent = "offline";
+  }
+  setTimeout(poll, 250);
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-side]");
+  if (btn) {
+    await api("/api/side", { side: btn.dataset.side });
+  } else if (e.target.id === "new-game") {
+    await api("/api/command", { command: "reset" });
+  }
+});
+
+$("move-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("move-input");
+  const san = input.value.trim();
+  if (!san) return;
+  const { data } = await api("/api/move", { san });
+  const fb = $("terminal-feedback");
+  fb.textContent = data.message || "";
+  fb.dataset.ok = String(!!data.ok);
+  if (data.ok) input.value = "";
+  input.focus();
+});
+
+poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux - build, unit tests, Playwright
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libglfw3-dev libglm-dev stockfish xvfb libgl1-mesa-dri
+
+      - name: Configure & build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Playwright (headless app)
+        run: npx playwright test
+
+      - name: Playwright (windowed app on Mesa/Xvfb)
+        env:
+          CHESS_APP_CMD: xvfb-run -a -s "-screen 0 1280x800x24" ./bin/chess-assist --port 8765 --movetime 600 --size 900x560
+        run: npx playwright test
+
+      - name: Render a still
+        run: xvfb-run -a -s "-screen 0 1700x1100x24" ./bin/chess-assist --size 1600x1000 --side white --moves "e4 e5 Nf3 Nc6" --screenshot ci-frame.png --frames 4 --port 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-results
+          path: |
+            ci-frame.png
+            playwright-report/
+
+  macos:
+    name: macOS - build and unit tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install glfw glm stockfish
+      - name: Configure & build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Headless smoke test
+        run: |
+          ./bin/chess-assist --headless --port 8765 &
+          sleep 3
+          curl -sf -X POST localhost:8765/api/side -d '{"side":"black"}'
+          curl -sf -X POST localhost:8765/api/move -d '{"san":"d4"}'
+          curl -sf localhost:8765/api/state | grep -q '"historyText":"1. d4"'
+          kill %1
